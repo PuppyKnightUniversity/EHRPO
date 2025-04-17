@@ -1,0 +1,5 @@
+*.pyc
+*.ckpt
+*.txt
+.vscode/sftp.json
+*.pyx
