@@ -8,6 +8,7 @@
 - Visit-level and feature-level attention extration (hitanet)
 - Basic LLM inference code for EHR analysis tasks (mortality prediction, readmission prediction)
 - Other baseline of EHR analysis model(e.g. Adacare, Concare, RNN, Transformer)
+- Load EHR model and LLM together into GPU
 
 ### TODO List:
 - Explicit injection prompt to LLM
