@@ -1,4 +1,3 @@
-# Task1: Data Load
 import os
 import torch
 import logging

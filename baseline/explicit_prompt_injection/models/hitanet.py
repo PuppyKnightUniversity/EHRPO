@@ -412,7 +412,10 @@ class HitaTransformer(BaseModel):
         '''
             extract importance visit and code
         '''
+        patient_descriptions = []
         for patient_idx, patient_dict in enumerate(batch_patient_dict_list):
+            # build patient description
+            description = f"According to Medical Expert, the patient's visit importance ranking is as follows:"
             print(f"\nPatient {patient_idx} visit importance ranking:")
             
             # Sort visits by score in descending order
@@ -449,9 +452,23 @@ class HitaTransformer(BaseModel):
                                                          raw_data_after_truncation)
         self.extract_importance_visit_and_code(batch_patient_dict_list)
 
+    def wrap_patient_attention_prompt(self, patient_attention_dict):
+        '''
+            wrap patient attention prompt
+        '''
+        batch_patient_attention_prompt = []
+        '''
+            TODO: add patient attention information from EHR model
+        '''
+        for feature_key in patient_attention_dict.keys():
+            code_level_importance_score, visit_level_importance_score, raw_data_after_truncation = patient_attention_dict[feature_key]
+
+        return batch_patient_attention_prompt
+    
     def forward(self, **kwargs) -> Dict[str, torch.Tensor]:
 
         patient_emb = []
+        patient_attention_dict = {}
         batch_time = kwargs['delta_days']
         batch_label = kwargs[self.label_key]
 
@@ -497,12 +514,20 @@ class HitaTransformer(BaseModel):
                                    code_level_importance_score, 
                                    visit_level_importance_score,
                                    raw_data_after_truncation)
+            
+            patient_attention_dict[feature_key] = [code_level_importance_score, visit_level_importance_score, raw_data_after_truncation]
         
         patient_emb = torch.cat(patient_emb, dim=1)
         results = self.map_patient_embedding_to_result(patient_emb, batch_label)
 
         if kwargs.get("embed", False):
             results["embed"] = patient_emb
+        
+        '''
+            TODO: add patient attention information from EHR model
+        '''
+        batch_patient_attention_prompt = self.wrap_patient_attention_prompt(patient_attention_dict)
+        results["patient_attention_prompt"] = batch_patient_attention_prompt
 
         return results
             

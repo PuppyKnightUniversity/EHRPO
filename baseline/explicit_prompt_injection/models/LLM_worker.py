@@ -32,6 +32,7 @@ class LLM_worker(BaseModel):
         metrics = None,
         inference_type = 'straight_forward',
         task_name = 'mortality_prediction',
+        EHR_model_prompt_injection = False,
         **kwargs
     ):  
         super(LLM_worker, self).__init__(
@@ -51,6 +52,7 @@ class LLM_worker(BaseModel):
         self.task_name = task_name
         self.feature_keys = feature_keys
         self.dataset = dataset
+        self.EHR_model_prompt_injection = EHR_model_prompt_injection
 
         self.get_basic_info()
         self.initialize_llm(llm_name, llm_local_path, api_key, is_api)
@@ -88,9 +90,9 @@ class LLM_worker(BaseModel):
             initialize ehr model
         '''
         self.ehr_model = ehr_model
-        state_dict = torch.load(ehr_model_path, map_location='cuda')
+        state_dict = torch.load(ehr_model_path, map_location='cuda:5')
         self.ehr_model.load_state_dict(state_dict)
-        print('ehr model initialized successfully.')
+        print('EHR model initialized successfully.')
         
 
     def get_basic_info(self):
@@ -557,8 +559,23 @@ class LLM_worker(BaseModel):
         return batch_prompt
 
 
-    def batch_forward(self, task_name = 'mortality_prediction', inference_type = 'deep_seek_r1',  **kwargs):
+    def batch_forward(self, 
+                      task_name = 'mortality_prediction', 
+                      EHR_model_prompt_injection = False,
+                      inference_type = 'deep_seek_r1',  
+                      **kwargs):
         # TODO: process EHR data as small EHR model does
+
+        if EHR_model_prompt_injection:
+            # forwardpass EHR model
+            self.ehr_model.eval()
+            with torch.no_grad():
+                # TODO: put attention prompt into outputs
+                outputs = self.ehr_model(**kwargs)
+                loss = outputs['loss']
+                y_true = outputs['y_true'].cpu().numpy()
+                y_prob = outputs['y_prob'].cpu().numpy()
+
 
         # transform codes to natural language
         batch_nl = self.transform_codes2nl(**kwargs)
@@ -592,6 +609,7 @@ class LLM_worker(BaseModel):
         for data in tqdm(dataloader, desc="Evaluation"):
             y_prob, y_true = self.batch_forward(task_name=self.task_name,
                                                 inference_type=self.inference_type,
+                                                EHR_model_prompt_injection=self.EHR_model_prompt_injection,
                                                 **data)
             y_prob = y_prob.cpu().numpy()
             y_true = y_true.cpu().numpy()
