@@ -70,16 +70,16 @@ class PositionalEncoding(nn.Module):
             TODO: max_len is not equal with real max_len
         '''
         max_len = torch.max(input_len)
-        print('input_len:', input_len)
-        print('max_len:', max_len)
-        tensor = torch.cuda.LongTensor if input_len.is_cuda else torch.LongTensor
+        #print('input_len:', input_len)
+        #print('max_len:', max_len)
+        # tensor = torch.cuda.LongTensor if input_len.is_cuda else torch.LongTensor
 
         pos = np.zeros([len(input_len), max_len]) # (batch_size, max_len)
         for ind, length in enumerate(input_len):
             for pos_ind in range(1, length + 1):
                 pos[ind, pos_ind - 1] = pos_ind # 位置从1开始，0表示填充
 
-        input_pos = tensor(pos) # (batch_size, max_len) 如果元素为0，则代表是padding的
+        input_pos = torch.tensor(pos, dtype=torch.long, device=input_len.device) # (batch_size, max_len) 如果元素为0，则代表是padding的
         return self.position_encoding(input_pos), input_pos
 
 
@@ -228,7 +228,7 @@ class EncoderHitanet_visit_level_attention(nn.Module):
     def get_visit_embedding_by_transformer(self, diagnosis_codes):
 
 
-        print('diagnosis_codes shape:', diagnosis_codes.shape)
+        # print('diagnosis_codes shape:', diagnosis_codes.shape)
         
         '''
             Mask generation

@@ -408,16 +408,18 @@ class HitaTransformer(BaseModel):
         return batch_patient_dict_list
     
     def extract_importance_visit_and_code(self, 
-                                          batch_patient_dict_list, ):
+                                          batch_patient_attention_prompt,
+                                          feature_key,
+                                          batch_patient_dict_list):
         '''
             extract importance visit and code
         '''
-        patient_descriptions = []
+        batch_patient_descriptions = []
         for patient_idx, patient_dict in enumerate(batch_patient_dict_list):
-            # build patient description
-            description = f"According to Medical Expert, the patient's visit importance ranking is as follows:"
-            print(f"\nPatient {patient_idx} visit importance ranking:")
-            
+            # build patient description  
+            description = batch_patient_attention_prompt[patient_idx]  
+            description += f"\n\tAspect: [{feature_key}]\n"       
+            description += f"\n\t<Visit Importance Analysis>:\n"
             # Sort visits by score in descending order
             sorted_visits = sorted(patient_dict['visit_total_scores'].items(), 
                                  key=lambda x: x[1], 
@@ -425,9 +427,9 @@ class HitaTransformer(BaseModel):
             
             # Print visit rankings
             for rank, (visit_idx, score) in enumerate(sorted_visits, 1):
-                print(f"Rank {rank}: Visit {visit_idx} (Score: {score:.4f})")
+                description += f"\t\tRank {rank}: Visit {visit_idx} (Score: {score:.4f})\n"
             
-            print(f"\nPatient {patient_idx} code importance ranking:")
+            description += f"\n\t<Code Importance Analysis>:\n"
             
             # Sort codes by total score in descending order
             sorted_codes = sorted(patient_dict['code_total_scores'].items(), 
@@ -436,9 +438,14 @@ class HitaTransformer(BaseModel):
             
             # Print code rankings
             for rank, (code, score) in enumerate(sorted_codes, 1):
-                print(f"Rank {rank}: Code {code} (Total Score: {score:.4f})")
+                description += f"\t\tRank {rank}: Code {code} (Total Score: {score:.4f})\n"
+
+            batch_patient_descriptions.append(description)
+        
+        return batch_patient_descriptions
     
     def analyze_attention(self, 
+                          batch_patient_attention_prompt, 
                           feature_key, 
                           code_level_importance_score, 
                           visit_level_importance_score, 
@@ -450,20 +457,44 @@ class HitaTransformer(BaseModel):
                                                          code_level_importance_score, 
                                                          visit_level_importance_score, 
                                                          raw_data_after_truncation)
-        self.extract_importance_visit_and_code(batch_patient_dict_list)
+        
+        batch_patient_attention_prompt = self.extract_importance_visit_and_code(batch_patient_attention_prompt = batch_patient_attention_prompt,
+                                                                                feature_key = feature_key, 
+                                                                                batch_patient_dict_list = batch_patient_dict_list)
+        
+        return batch_patient_attention_prompt
 
     def wrap_patient_attention_prompt(self, patient_attention_dict):
         '''
             wrap patient attention prompt
         '''
         batch_patient_attention_prompt = []
+        
+        # Get the number of patients from the first feature's data
+        first_feature_key = list(patient_attention_dict.keys())[0]
+        num_patients = len(patient_attention_dict[first_feature_key][2])  # raw_data_after_truncation
+        
+        # Add initial description for each patient
+        for patient_idx in range(num_patients):
+            initial_description = "The following information comes from a clinical EHR analysis tool that supports decision-making based on the patient’s EHR. It analyzes historical data and highlights key visits and medical codes across three aspects: conditions, drugs, and procedures.\n"
+            initial_description += "Each aspect includes:\n"
+            initial_description += "1.<Visit Importance Analysis>: Marks visits most relevant to understanding the patient’s health in that aspect. You should focus more on these high-importance visits.\n"
+            initial_description += "2.<Code Importance Analysis>: Identifies the most important medical codes for that aspect, which are the codes most relevant to the patient’s health in that aspect. You should focus more on these high-importance codes.\n"
+            batch_patient_attention_prompt.append(initial_description)
+        
         '''
             TODO: add patient attention information from EHR model
         '''
         for feature_key in patient_attention_dict.keys():
             # for each feature_key, e.g conditions, drugs, procedures
             code_level_importance_score, visit_level_importance_score, raw_data_after_truncation = patient_attention_dict[feature_key]
+            batch_patient_attention_prompt = self.analyze_attention(batch_patient_attention_prompt,
+                                                                    feature_key, 
+                                                                    code_level_importance_score, 
+                                                                    visit_level_importance_score,
+                                                                    raw_data_after_truncation)
 
+        # print(batch_patient_attention_prompt[0])
         return batch_patient_attention_prompt
     
     def forward(self, **kwargs) -> Dict[str, torch.Tensor]:
@@ -511,11 +542,7 @@ class HitaTransformer(BaseModel):
             '''
                 analyze attention
             '''
-            self.analyze_attention(feature_key, 
-                                   code_level_importance_score, 
-                                   visit_level_importance_score,
-                                   raw_data_after_truncation)
-            
+
             patient_attention_dict[feature_key] = [code_level_importance_score, visit_level_importance_score, raw_data_after_truncation]
         
         patient_emb = torch.cat(patient_emb, dim=1)

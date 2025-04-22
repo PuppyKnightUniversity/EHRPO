@@ -77,14 +77,14 @@ if __name__ == '__main__':
     output, attn_weights_list = model(src)
 
     # 输出结果
-    print("Transformer output shape:", output.shape)  # 应该是 (batch_size, seq_length, model_dim)
+    # print("Transformer output shape:", output.shape)  # 应该是 (batch_size, seq_length, model_dim)
     
     # 初始化一个重要性分数数组
     importance_scores = torch.zeros(src.shape[1], src.shape[0])  # (batch_size, seq_length)
 
     # 对每一层的注意力权重求和，得到每个token的重要性分数
     for i, attn_weights in enumerate(attn_weights_list):
-        print(f"Attention weights shape for layer {i+1}: {attn_weights.shape}")
+        # print(f"Attention weights shape for layer {i+1}: {attn_weights.shape}")
         
         # 对每层的注意力权重进行求和，计算每个token的重要性分数
         # 每层的权重 shape: (batch_size, seq_length, seq_length)

@@ -338,7 +338,7 @@ class Trainer:
         self.model.load_state_dict(state_dict)
         return
     
-    def export_model(self, output_path: str):
+    def export_model(self, ):
         return self.model
 
 

@@ -5,7 +5,6 @@ import numpy as np
 import pickle
 from torch.utils.data import DataLoader
 
-from pyhealth.utils import load_pickle
 from pyhealth.datasets import collate_fn_dict
 
 from models.hitanet.hitanet import HitaTransformer
@@ -117,7 +116,7 @@ def set_ehr_model(dataset_sample,
     # Generate cache file name based on dataset and task
     dataset_name = dataset
     task_name = task_name
-    cache_file = os.path.join(cache_dir, f'{dataset_name}_{task_name}.ckpt')
+    cache_file = os.path.join(cache_dir, f'{dataset_name}_{task_name}_HitaNet.ckpt')
     
     # Check if cache exists
     if os.path.exists(cache_file):
