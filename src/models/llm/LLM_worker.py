@@ -14,11 +14,22 @@ import numpy as np
 import re
 import torch.nn as nn
 
+from models.llm.mcts import medical_mcts_search
+
+import os
+import json
+import pickle
+import time
+
+
+CHECKPOINT_DIR = "checkpoints"
+CHECKPOINT_FILE = os.path.join(CHECKPOINT_DIR, "inference_checkpoint2.json")
+RESULTS_FILE = os.path.join(CHECKPOINT_DIR, "inference_results2.pkl")
+
 class LLM_worker(BaseModel):
     def __init__(
         self,
         ehr_model:nn.Module,
-        ehr_model_path:str,
         dataset: SampleEHRDataset,
         feature_keys: List[str],
         label_key: str,   
@@ -54,7 +65,7 @@ class LLM_worker(BaseModel):
 
         self.get_basic_info()
         self.initialize_llm(llm_name, llm_local_path, api_key, is_api)
-        self.initialize_ehr_model(ehr_model, ehr_model_path)
+        self.initialize_ehr_model(ehr_model,)
 
     def initialize_llm(self, llm_name:str, llm_local_path:str, api_key:str, is_api:bool):
         '''
@@ -96,22 +107,20 @@ class LLM_worker(BaseModel):
         print('llm model initialized successfully.')
           
             
-    def initialize_ehr_model(self, ehr_model, ehr_model_path):
+    def initialize_ehr_model(self, ehr_model):
         '''
             initialize ehr model
         '''
         self.ehr_model = ehr_model
-        state_dict = torch.load(ehr_model_path, map_location='cuda:2')
-        self.ehr_model.load_state_dict(state_dict)
         print('EHR model initialized successfully.')
         
 
     def get_basic_info(self):
-        print('------ basic llm information ------')
-        print('llm name: ', self.llm_name)
-        print('task name: ', self.task_name)
-        print('inference type', self.inference_type)
-
+        print('\n------ basic llm information ------\n')
+        print('\tllm name: ', self.llm_name)
+        print('\ttask name: ', self.task_name)
+        print('\tinference type: ', self.inference_type)
+        print('\n-----------------------------------\n')
 
 
     def get_visit_level_probing_prompt(self,
@@ -334,13 +343,27 @@ class LLM_worker(BaseModel):
                                          batch_prompt, 
                                          inference_type = 'deep_seek_r1', 
                                          candicate_ans_list = ['A', 'B']):
+        '''
+            TODO:
+                mcts inference
+        '''
         batch_logits = []
+        
         for prompt in batch_prompt:
-            logits = self.get_answer_logits(prompt=prompt, 
-                                            inference_type = inference_type, 
-                                            candicate_ans_list=candicate_ans_list)
+            if inference_type == 'mcts':
+                logits, _ = medical_mcts_search(
+                    prompt=prompt,
+                    llm_model=self.model,
+                    tokenizer=self.tokenizer,
+                    task_name=self.task_name,
+                )
+            else:
+                logits = self.get_answer_logits(prompt=prompt, 
+                                                inference_type = inference_type, 
+                                                candicate_ans_list=candicate_ans_list)
             print(logits)
             batch_logits.append(logits)
+        
         batch_logits = torch.tensor(batch_logits).reshape(-1,1)
         return batch_logits
 
@@ -521,7 +544,7 @@ class LLM_worker(BaseModel):
         '''
             tell llm how to inference, like 'think step by step' or 'give answer straight_forward'
         '''
-        if inference_type not in ['straight_forward', 'deep_seek_r1']:
+        if inference_type not in ['straight_forward', 'deep_seek_r1', 'mcts']:
             raise ValueError(
                     f"task type {inference_type} not implemented"
                 )
@@ -532,12 +555,18 @@ class LLM_worker(BaseModel):
         elif inference_type == 'deep_seek_r1':
             # deep_seek_r1 style 'think and answer'
             inference_head = 'Important: First thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>. '
+        elif inference_type == 'mcts':
+            inference_head = ''
+        
         return inference_head
     
     def prompt_generate(self, 
                         batch_nl, 
                         task_name='mortality_prediction', 
-                        inference_type = 'straight_forward'):
+                        inference_type = 'straight_forward',
+                        EHR_model_prompt_injection = False,
+                        patient_attention_prompt = None,
+                        ehr_model_y_prob = None):
         '''
             wrap all patient EHR data into prompt for llm 
         '''
@@ -553,7 +582,7 @@ class LLM_worker(BaseModel):
 
         inference_head = self.inference_head_generate(inference_type=inference_type)
 
-        for patient_nl in tqdm(batch_nl, desc="Wrap LLM prompt", total=len(batch_nl)):
+        for pid, patient_nl in enumerate(tqdm(batch_nl, desc="Wrap LLM prompt", total=len(batch_nl))):
             
             current_patient_information = "Here is the current patient's <Visit Sequence>:\n"
             
@@ -565,8 +594,15 @@ class LLM_worker(BaseModel):
                         current_patient_information += '\t\t' + code + '\n'
 
             patient_prompt = identity_head + data_description_head + current_patient_information + task_head + inference_head
+
+            if EHR_model_prompt_injection:
+                patient_prompt = identity_head + data_description_head + current_patient_information + task_head + patient_attention_prompt[pid]+ inference_head 
+            else:
+                patient_prompt = identity_head + data_description_head + current_patient_information + task_head + inference_head 
+
             batch_prompt.append(patient_prompt)
         
+        # print(batch_prompt[0])
         return batch_prompt
 
 
@@ -577,6 +613,9 @@ class LLM_worker(BaseModel):
                       **kwargs):
         # TODO: process EHR data as small EHR model does
 
+        patient_attention_prompt = None
+        ehr_model_y_prob = None
+
         if EHR_model_prompt_injection:
             # forwardpass EHR model
             self.ehr_model.eval()
@@ -585,32 +624,37 @@ class LLM_worker(BaseModel):
                 outputs = self.ehr_model(**kwargs)
                 loss = outputs['loss']
                 y_true = outputs['y_true'].cpu().numpy()
-                y_prob = outputs['y_prob'].cpu().numpy()
+                ehr_model_y_prob = outputs['y_prob'].cpu().numpy()
+                patient_attention_prompt = outputs['patient_attention_prompt']
+                
+                #print(patient_attention_prompt[0])
 
 
         # transform codes to natural language
         batch_nl = self.transform_codes2nl(**kwargs)
 
         # generate prompt
-        batch_prompt = self.prompt_generate(batch_nl,
+        batch_prompt = self.prompt_generate(batch_nl = batch_nl,
                                             task_name = task_name, 
-                                            inference_type = inference_type)
+                                            inference_type = inference_type,
+                                            EHR_model_prompt_injection = EHR_model_prompt_injection,
+                                            patient_attention_prompt = patient_attention_prompt,
+                                            ehr_model_y_prob = ehr_model_y_prob)
         
         # TODO: after generating complete answer, how to get logits
 
         # batch_answer = self.batch_get_response(batch_prompt)
 
 
-        batch_logits = self.batch_get_next_token_with_logits_with_attention(
-                                                                            batch_nl = batch_nl,
-                                                                            batch_prompt = batch_prompt,
-                                                                            inference_type = inference_type)
+        batch_logits = self.batch_get_next_token_with_logits(
+                                                            batch_prompt = batch_prompt,
+                                                            inference_type = inference_type)
         y_prob = batch_logits
         y_true = self.prepare_labels(kwargs[self.label_key], self.label_tokenizer)
 
         return y_prob, y_true
 
-
+    '''
     def inference(self, dataloader):
 
         y_true_all = []
@@ -642,8 +686,119 @@ class LLM_worker(BaseModel):
         print(scores)
 
         return outputs
+    '''
 
+    def save_checkpoint(self, batch_idx, y_true_all, y_prob_all):
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
+        checkpoint_data = {
+            "batch_idx": batch_idx,
+            "timestamp": self._get_current_time()
+        }
+        
+        with open(CHECKPOINT_FILE, 'w') as f:
+            json.dump(checkpoint_data, f)
+        
+        results_data = {
+            "y_true_all": y_true_all,
+            "y_prob_all": y_prob_all
+        }
+        
+        with open(RESULTS_FILE, 'wb') as f:
+            pickle.dump(results_data, f)
+        
+        print(f"Checkpoint saved: Processed {batch_idx} batches of data")
+
+    def load_checkpoint(self):
+        if not os.path.exists(CHECKPOINT_FILE) or not os.path.exists(RESULTS_FILE):
+            print("No valid checkpoint found, starting from scratch")
+            return 0, [], []
+        
+        try:
+            with open(CHECKPOINT_FILE, 'r') as f:
+                checkpoint_data = json.load(f)
+
+            with open(RESULTS_FILE, 'rb') as f:
+                results_data = pickle.load(f)
+            
+            batch_idx = checkpoint_data["batch_idx"]
+            y_true_all = results_data["y_true_all"]
+            y_prob_all = results_data["y_prob_all"]
+            
+            print(f"Checkpoint loaded: Resuming from batch {batch_idx + 1}")
+            return batch_idx + 1, y_true_all, y_prob_all
+        except Exception as e:
+            print(f"Error loading checkpoint: {e}")
+            print("Starting from scratch")
+            return 0, [], []
+
+    def _get_current_time(self):
+        return time.time()
+            
+    def inference(self, dataloader, checkpoint_interval=1):
+        start_batch_idx, y_true_all, y_prob_all = self.load_checkpoint()
+        
+        if not isinstance(y_true_all, list):
+            y_true_all = []
+        if not isinstance(y_prob_all, list):
+            y_prob_all = []
+            
+        dataloader_iter = iter(dataloader)
+        print(f"\ntotal batches: {len(dataloader)}")
+        
+        for _ in range(start_batch_idx):
+            try:
+                next(dataloader_iter)
+            except StopIteration:
+                print("Warning: All batches have been processed")
+                break
+        
+        try:
+            for batch_idx, data in enumerate(dataloader_iter, start=start_batch_idx):
+                print(f"Processing batch {batch_idx}")
+                        
+                y_prob, y_true = self.batch_forward(
+                    task_name=self.task_name,
+                    inference_type=self.inference_type,
+                    **data
+                )
+
+                y_prob = y_prob.cpu().numpy()
+                y_true = y_true.cpu().numpy()
+                y_true_all.append(y_true)
+                y_prob_all.append(y_prob)
+
+                if (batch_idx + 1) % checkpoint_interval == 0:
+                    self.save_checkpoint(batch_idx, y_true_all, y_prob_all)
+            
+
+            if len(y_true_all) > 0 and len(y_prob_all) > 0:
+                y_true_all_np = np.concatenate(y_true_all, axis=0)
+                y_prob_all_np = np.concatenate(y_prob_all, axis=0)
+                
+                outputs = [y_true_all_np, y_prob_all_np]
+                
+                print(y_true_all_np)
+                print(y_prob_all_np)
+                
+                metrics_fn = get_metrics_fn(self.mode)
+                scores = metrics_fn(y_true_all_np, y_prob_all_np, metrics=self.metrics)
+                print(scores)
+
+                if os.path.exists(CHECKPOINT_FILE):
+                    os.remove(CHECKPOINT_FILE)
+                if os.path.exists(RESULTS_FILE):
+                    os.remove(RESULTS_FILE)
+                
+                return outputs
+            else:
+                print("No data was processed")
+                return None
+            
+        except Exception as e:
+            print(f"Processing interrupted: {e}")
+            self.save_checkpoint(batch_idx, y_true_all, y_prob_all)
+            raise  
 
 if __name__ == "__main__":
     

@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from typing import Dict, List, Optional, Tuple
 from pyhealth.models import BaseModel
+from pyhealth.medcode import InnerMap
 from pyhealth.datasets import SampleEHRDataset
 from models.hitanet.transformer_hita import TransformerHitaBlock
 
@@ -414,6 +415,12 @@ class HitaTransformer(BaseModel):
         '''
             extract importance visit and code
         '''
+
+        # Initial mapping table
+        self.code_vocs = self.dataset.code_vocs
+        map_table = InnerMap.load(self.code_vocs[feature_key])
+
+
         batch_patient_descriptions = []
         for patient_idx, patient_dict in enumerate(batch_patient_dict_list):
             # build patient description  
@@ -438,7 +445,12 @@ class HitaTransformer(BaseModel):
             
             # Print code rankings
             for rank, (code, score) in enumerate(sorted_codes, 1):
-                description += f"\t\tRank {rank}: Code {code} (Total Score: {score:.4f})\n"
+                # TODO: map code to code_name
+                try:
+                    code_nl = map_table.lookup(code)
+                    description += f"\t\tRank {rank}:  {code_nl} (Total Score: {score:.4f})\n"
+                except Exception as e:
+                    description += f"\t\tRank {rank}:  {code} (Total Score: {score:.4f})\n"
 
             batch_patient_descriptions.append(description)
         
