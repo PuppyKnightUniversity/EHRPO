@@ -20,13 +20,16 @@ DATASET_PATH_MAP = {
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--seed", type=int, default=1456)
+    parser.add_argument("--seed", type=int, default=1128)
 
     '''
         Dataset settings
     '''
     parser.add_argument("--dataset", type=str, default="mimic3")
-    parser.add_argument("--task_name", type=str, default="mortality_prediction")
+
+    # options: mortality_prediction, readmission_prediction
+    parser.add_argument("--task_name", type=str, default="readmission_prediction")
+
     parser.add_argument("--dataset_path", type=str, default=None)
     
     '''
@@ -51,7 +54,7 @@ def parse_args():
         deep_seek_r1: deep seek r1 inference
         mcts: MCTS inference
     '''
-    parser.add_argument("--inference_type", type=str, default="mcts")
+    parser.add_argument("--inference_type", type=str, default="straight_forward")
     
     '''
         Experiment settings

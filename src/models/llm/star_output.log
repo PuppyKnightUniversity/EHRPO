@@ -1,0 +1,102 @@
+nohup: ignoring input
+/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/bitsandbytes/cuda_setup/main.py:149: UserWarning: /home/user/.conda/envs/fy_llama_factory did not contain ['libcudart.so', 'libcudart.so.11.0', 'libcudart.so.12.0'] as expected! Searching further paths...
+  warn(msg)
+
+===================================BUG REPORT===================================
+Welcome to bitsandbytes. For bug reports, please run
+
+python -m bitsandbytes
+
+ and submit this information together with your error trace to: https://github.com/TimDettmers/bitsandbytes/issues
+================================================================================
+bin /home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/bitsandbytes/libbitsandbytes_cuda112.so
+CUDA SETUP: CUDA runtime path found: /usr/local/cuda-11.2/lib64/libcudart.so
+CUDA SETUP: Highest compute capability among GPUs detected: 8.6
+CUDA SETUP: Detected CUDA version 112
+CUDA SETUP: Loading binary /home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/bitsandbytes/libbitsandbytes_cuda112.so...
+GPU count: 4
+Current GPU index: 0
+/data/fy/fy/codebase/EHRPO/src/models/llm
+Loaded NDC->ATC mapping from /home/user/.cache/pyhealth/medcode/NDC_to_ATC.pkl
+Loaded NDC code from /home/user/.cache/pyhealth/medcode/NDC.pkl
+Loaded ATC code from /home/user/.cache/pyhealth/medcode/ATC.pkl
+Loaded MIMIC3Dataset base dataset from /home/user/.cache/pyhealth/datasets/25ffb5a0573da738a50811a120660cf6.pkl
+Generating samples for patient_level_readmission_prediction_mimic3:   0%|          | 0/46520 [00:00<?, ?it/s]Generating samples for patient_level_readmission_prediction_mimic3:  17%|█▋        | 8119/46520 [00:00<00:00, 81183.11it/s]Generating samples for patient_level_readmission_prediction_mimic3:  35%|███▍      | 16238/46520 [00:00<00:00, 79431.93it/s]Generating samples for patient_level_readmission_prediction_mimic3:  52%|█████▏    | 24184/46520 [00:00<00:00, 79081.63it/s]Generating samples for patient_level_readmission_prediction_mimic3:  69%|██████▉   | 32094/46520 [00:00<00:00, 77433.51it/s]Generating samples for patient_level_readmission_prediction_mimic3:  86%|████████▌ | 39916/46520 [00:00<00:00, 77696.98it/s]Generating samples for patient_level_readmission_prediction_mimic3: 100%|██████████| 46520/46520 [00:00<00:00, 77823.42it/s]
+Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+
+---------- basic llm information ----------
+
+	llm name:  qwen2-5-1.5b-instruct
+	task name:  readmission_prediction
+	inference type:  mcts
+
+-------------------------------------------
+
+llm model initialized successfully.
+EHR model initialized successfully.
+Starting STaR Training
+GPU count: 4
+Current GPU index: 0
+Loaded checkpoint from ./star_outputs/checkpoints/checkpoint.pkl
+Resuming from iteration 0
+Starting iteration 1/3
+Resuming reasoning path generation from batch 16
+Generating reasoning paths with MCTS
+Resuming from batch 16 with 120 existing paths
+Generating reasoning paths: 0it [00:00, ?it/s]Generating reasoning paths: 0it [00:00, ?it/s]
+Filtered 33 successful and 87 incorrect paths
+Resuming rationalization from path 87
+Generating rationalized paths for incorrect examples
+Resuming rationalization from index 87 with 85 existing paths
+Generating rationalized paths: 0it [00:00, ?it/s]Generating rationalized paths: 0it [00:00, ?it/s]
+Generated 85 successful rationalized paths
+Prepared 118 examples for training
+Saved training dataset to ./star_outputs/datasets/training_data_iteration_0.json
+Resuming finetuning from epoch 1.0, batch 1
+Finetuning model on 118 examples
+Map:   0%|          | 0/118 [00:00<?, ? examples/s]Map:  14%|█▎        | 16/118 [00:00<00:00, 130.57 examples/s]Map:  27%|██▋       | 32/118 [00:00<00:00, 136.74 examples/s]Map:  54%|█████▍    | 64/118 [00:00<00:00, 188.22 examples/s]Map:  81%|████████▏ | 96/118 [00:00<00:00, 206.21 examples/s]Map: 100%|██████████| 118/118 [00:00<00:00, 198.43 examples/s]
+/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/accelerate/accelerator.py:436: FutureWarning: Passing the following arguments to `Accelerator` is deprecated and will be removed in version 1.0 of Accelerate: dict_keys(['dispatch_batches', 'split_batches', 'even_batches', 'use_seedable_sampler']). Please pass an `accelerate.DataLoaderConfiguration` instead: 
+dataloader_config = DataLoaderConfiguration(dispatch_batches=None, split_batches=False, even_batches=True, use_seedable_sampler=True)
+  warnings.warn(
+Detected kernel version 4.15.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+Max input length: 4096, Avg: 1066.11
+trainable params: 4,616,192 || all params: 1,548,330,496 || trainable%: 0.29813996507370993
+No checkpoint found for resuming. Starting from beginning.
+  0%|          | 0/14 [00:00<?, ?it/s]`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...
+Traceback (most recent call last):
+  File "/data/fy/fy/codebase/EHRPO/src/models/llm/inferencer.py", line 173, in <module>
+    deepseek_inferencer()
+  File "/data/fy/fy/codebase/EHRPO/src/models/llm/inferencer.py", line 169, in deepseek_inferencer
+    star_trainer.run()
+  File "/data/fy/fy/codebase/EHRPO/src/models/llm/star_trainer.py", line 146, in run
+    self.finetune_model(training_data, iteration, resume=True)
+  File "/data/fy/fy/codebase/EHRPO/src/models/llm/star_trainer.py", line 486, in finetune_model
+    trainer.train()
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/transformers/trainer.py", line 1780, in train
+    return inner_training_loop(
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/transformers/trainer.py", line 2118, in _inner_training_loop
+    tr_loss_step = self.training_step(model, inputs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/transformers/trainer.py", line 3036, in training_step
+    loss = self.compute_loss(model, inputs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/transformers/trainer.py", line 3059, in compute_loss
+    outputs = model(**inputs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/accelerate/utils/operations.py", line 825, in forward
+    return model_forward(*args, **kwargs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/accelerate/utils/operations.py", line 813, in __call__
+    return convert_to_fp32(self.model_forward(*args, **kwargs))
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/torch/amp/autocast_mode.py", line 14, in decorate_autocast
+    return func(*args, **kwargs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/peft/peft_model.py", line 1129, in forward
+    return self.base_model(
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/peft/tuners/tuners_utils.py", line 161, in forward
+    return self.model.forward(*args, **kwargs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/accelerate/hooks.py", line 166, in new_forward
+    output = module._old_forward(*args, **kwargs)
+  File "/home/user/.conda/envs/fy_llama_factory/lib/python3.10/site-packages/transformers/models/qwen2/modeling_qwen2.py", line 1187, in forward
+    logits = logits.float()
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 4.64 GiB (GPU 0; 23.69 GiB total capacity; 5.07 GiB already allocated; 2.78 GiB free; 5.49 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+  0%|          | 0/14 [00:22<?, ?it/s]

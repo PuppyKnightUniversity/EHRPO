@@ -18,8 +18,8 @@ from utils.task_remake import (patient_train_val_test_split,
 
 from args.ehrpo_args import parse_args
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
-#os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4,5,6,7'
+
 
 def set_random_seed(seed):
     np.random.seed(seed)
@@ -108,6 +108,7 @@ def set_ehr_model(dataset_sample,
         feature_keys=x_key,
         label_key="label",
         mode="binary",
+        task_name = task_name
     )
 
     # Create cache directory if it doesn't exist

@@ -182,6 +182,7 @@ class HitaTransformer(BaseModel):
         label_key: str,
         mode: str,
         embedding_dim: int = 128,
+        task_name: str = None,
         **kwargs
     ):
         super(HitaTransformer, self).__init__(
@@ -191,7 +192,7 @@ class HitaTransformer(BaseModel):
             mode=mode,
         )
         self.embedding_dim = embedding_dim
-
+        self.task_name = task_name
         # validate kwargs for Transformer layer
         if "feature_size" in kwargs:
             raise ValueError("feature_size is determined by embedding_dim")
@@ -488,10 +489,19 @@ class HitaTransformer(BaseModel):
         
         # Add initial description for each patient
         for patient_idx in range(num_patients):
-            initial_description = "The following information comes from a clinical EHR analysis tool that supports decision-making based on the patient’s EHR. It analyzes historical data and highlights key visits and medical codes across three aspects: conditions, drugs, and procedures.\n"
+            initial_description = "The following information comes from a clinical EHR analysis tool that supports decision-making based on the patient's EHR. It analyzes historical data and highlights key visits and medical codes across three aspects: conditions, drugs, and procedures.\n"
             initial_description += "Each aspect includes:\n"
-            initial_description += "1.<Visit Importance Analysis>: Marks visits most relevant to understanding the patient’s health in that aspect. You should focus more on these high-importance visits.\n"
-            initial_description += "2.<Code Importance Analysis>: Identifies the most important medical codes for that aspect, which are the codes most relevant to the patient’s health in that aspect. You should focus more on these high-importance codes.\n"
+            initial_description += "1.<Visit Importance Analysis>: Marks visits most relevant to understanding the patient's health in that aspect. You should focus more on these high-importance visits.\n"
+            initial_description += "2.<Code Importance Analysis>: Identifies the most important medical codes for that aspect, which are the codes most relevant to the patient's health in that aspect. You should focus more on these high-importance codes.\n"
+            
+            # Add EHR model prediction probability based on task type
+            if hasattr(self, 'y_prob') and self.y_prob is not None:
+                prediction_percentage = f"{float(self.y_prob[patient_idx]) * 100:.1f}%"
+                if self.task_name == "mortality_prediction":
+                    initial_description += f"\n[EHR Model Prediction Result]: \n\tThe EHR model predicts a {prediction_percentage} probability of mortality within the next 14 days for this patient.\n"
+                elif self.task_name == "readmission_prediction":
+                    initial_description += f"\n[EHR Model Prediction Result]: \n\tThe EHR model predicts a {prediction_percentage} probability of readmission within two weeks for this patient.\n"
+            
             batch_patient_attention_prompt.append(initial_description)
         
         '''
@@ -566,6 +576,8 @@ class HitaTransformer(BaseModel):
         '''
             TODO: add patient attention information from EHR model
         '''
+        # Save y_prob for use in attention prompt generation
+        self.y_prob = results["y_prob"]
         batch_patient_attention_prompt = self.wrap_patient_attention_prompt(patient_attention_dict)
         results["patient_attention_prompt"] = batch_patient_attention_prompt
 

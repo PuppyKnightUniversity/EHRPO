@@ -6,15 +6,13 @@ from openai import OpenAI
 from pyhealth.medcode import InnerMap
 from pyhealth.datasets import SampleEHRDataset
 from pyhealth.trainer import get_metrics_fn
-from pyhealth.metrics import (binary_metrics_fn, multiclass_metrics_fn,
-                              multilabel_metrics_fn, regression_metrics_fn)
 import torch.nn.functional as F
 from pyhealth.models import BaseModel
 import numpy as np
 import re
 import torch.nn as nn
 
-from models.llm.mcts import medical_mcts_search
+from mcts import medical_mcts_search
 
 import os
 import json
@@ -23,8 +21,8 @@ import time
 
 
 CHECKPOINT_DIR = "checkpoints"
-CHECKPOINT_FILE = os.path.join(CHECKPOINT_DIR, "inference_checkpoint2.json")
-RESULTS_FILE = os.path.join(CHECKPOINT_DIR, "inference_results2.pkl")
+CHECKPOINT_FILE = os.path.join(CHECKPOINT_DIR, "inference_checkpoint.json")
+RESULTS_FILE = os.path.join(CHECKPOINT_DIR, "inference_results.pkl")
 
 class LLM_worker(BaseModel):
     def __init__(
@@ -94,7 +92,7 @@ class LLM_worker(BaseModel):
                                                                device_map="auto",
                                                                trust_remote_code=True)
         elif llm_name == 'qwen2-5-1.5b-instruct':
-            model_path = llm_local_path
+            model_path = '/data/fy/fy/llmbase/Qwen2.5-1.5B-Instruct/'
 
             self.tokenizer = AutoTokenizer.from_pretrained( model_path,
                                                             use_fast=False,
@@ -116,11 +114,11 @@ class LLM_worker(BaseModel):
         
 
     def get_basic_info(self):
-        print('\n------ basic llm information ------\n')
+        print('\n---------- basic llm information ----------\n')
         print('\tllm name: ', self.llm_name)
         print('\ttask name: ', self.task_name)
         print('\tinference type: ', self.inference_type)
-        print('\n-----------------------------------\n')
+        print('\n-------------------------------------------\n')
 
 
     def get_visit_level_probing_prompt(self,
@@ -351,7 +349,7 @@ class LLM_worker(BaseModel):
         
         for prompt in batch_prompt:
             if inference_type == 'mcts':
-                logits, _ = medical_mcts_search(
+                logits, _, _ = medical_mcts_search(
                     prompt=prompt,
                     llm_model=self.model,
                     tokenizer=self.tokenizer,
@@ -596,13 +594,14 @@ class LLM_worker(BaseModel):
             patient_prompt = identity_head + data_description_head + current_patient_information + task_head + inference_head
 
             if EHR_model_prompt_injection:
-                patient_prompt = identity_head + data_description_head + current_patient_information + task_head + patient_attention_prompt[pid]+ inference_head 
+                # TODO: refine prompt injection
+                patient_prompt = identity_head + data_description_head + current_patient_information + task_head + patient_attention_prompt[pid] + inference_head 
+                print(patient_prompt)
             else:
                 patient_prompt = identity_head + data_description_head + current_patient_information + task_head + inference_head 
 
             batch_prompt.append(patient_prompt)
-        
-        # print(batch_prompt[0])
+
         return batch_prompt
 
 
@@ -629,7 +628,6 @@ class LLM_worker(BaseModel):
                 
                 #print(patient_attention_prompt[0])
 
-
         # transform codes to natural language
         batch_nl = self.transform_codes2nl(**kwargs)
 
@@ -651,42 +649,7 @@ class LLM_worker(BaseModel):
                                                             inference_type = inference_type)
         y_prob = batch_logits
         y_true = self.prepare_labels(kwargs[self.label_key], self.label_tokenizer)
-
         return y_prob, y_true
-
-    '''
-    def inference(self, dataloader):
-
-        y_true_all = []
-        y_prob_all = []
-
-        # inference
-        for data in tqdm(dataloader, desc="Evaluation"):
-            y_prob, y_true = self.batch_forward(task_name=self.task_name,
-                                                inference_type=self.inference_type,
-                                                EHR_model_prompt_injection=self.EHR_model_prompt_injection,
-                                                **data)
-            y_prob = y_prob.cpu().numpy()
-            y_true = y_true.cpu().numpy()
-            y_true_all.append(y_true)
-            y_prob_all.append(y_prob)
-
-        y_true_all = np.concatenate(y_true_all, axis=0)
-        y_prob_all = np.concatenate(y_prob_all, axis=0)
-
-        outputs = [y_true_all, y_prob_all]
-
-
-        print(y_true_all)
-        print(y_prob_all)
-
-        # evaluate
-        metrics_fn = get_metrics_fn(self.mode)
-        scores = metrics_fn(y_true_all, y_prob_all, metrics=self.metrics)
-        print(scores)
-
-        return outputs
-    '''
 
     def save_checkpoint(self, batch_idx, y_true_all, y_prob_all):
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -734,6 +697,15 @@ class LLM_worker(BaseModel):
 
     def _get_current_time(self):
         return time.time()
+
+    def load_finetuned_model(self, model_path):
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            device_map="auto",
+            trust_remote_code=True
+        )
+        print(f"Loaded finetuned model from {model_path}")
+        return self.model
             
     def inference(self, dataloader, checkpoint_interval=1):
         start_batch_idx, y_true_all, y_prob_all = self.load_checkpoint()
@@ -760,6 +732,7 @@ class LLM_worker(BaseModel):
                 y_prob, y_true = self.batch_forward(
                     task_name=self.task_name,
                     inference_type=self.inference_type,
+                    EHR_model_prompt_injection=self.EHR_model_prompt_injection,
                     **data
                 )
 
@@ -778,8 +751,7 @@ class LLM_worker(BaseModel):
                 
                 outputs = [y_true_all_np, y_prob_all_np]
                 
-                print(y_true_all_np)
-                print(y_prob_all_np)
+                print(outputs)
                 
                 metrics_fn = get_metrics_fn(self.mode)
                 scores = metrics_fn(y_true_all_np, y_prob_all_np, metrics=self.metrics)
@@ -790,7 +762,7 @@ class LLM_worker(BaseModel):
                 if os.path.exists(RESULTS_FILE):
                     os.remove(RESULTS_FILE)
                 
-                return outputs
+                return outputs,scores
             else:
                 print("No data was processed")
                 return None

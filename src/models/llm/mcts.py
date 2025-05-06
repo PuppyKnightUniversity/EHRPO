@@ -3,7 +3,7 @@ import random
 from collections import defaultdict
 from abc import ABC, abstractmethod
 from typing import Optional, List, Tuple, Dict, Any
-from models.llm.prompt import subquestion_prompts, usefulness_prompts, reward_prompts
+from prompt import subquestion_prompts, usefulness_prompts, reward_prompts
 import warnings
 from copy import deepcopy
 from tqdm import tqdm
@@ -181,7 +181,7 @@ class MedicalMCTSNode(MCTSNode):
     def _child_node(self, prompt, r0):
         return MedicalMCTSNode(self.prompt + prompt, self.llm_model, self.tokenizer, self.depth + 1,
                               self.subquestion_prompts, self.usefulness_prompts, self.reward_prompts, self.task_name, self._r1_default, 
-                              self._r_alpha, parent=self, r0=r0)
+                              self._r_alpha, parent=self, r0=r0, max_depth=self.max_depth)
 
     def _get_children(self):
         self._visited = True
@@ -285,7 +285,6 @@ You are a helpful assistant.<|im_end|>
         
                 yes_prob = torch.softmax(torch.tensor([yes_logit, no_logit]), dim=0)[0].item()
 
-            print(f"Useful {self.depth}.{i + 1}: {yes_prob}")
             r0_values.append(yes_prob)
 
         return r0_values
@@ -320,10 +319,9 @@ You are a helpful assistant.<|im_end|>
             self._r1 = max(self.logits, 1 - self.logits)
 
             if self.logits >= 0.5:
-                Answer = "A"
+                Answer = "A. Yes"
             else:
-                Answer = "B"
-            print(f"\nFinal logits: {self.logits}, answer: {Answer}")
+                Answer = "B. No"
         else:
             with torch.no_grad():
                 generated_ids = self.llm_model.generate(
@@ -374,8 +372,6 @@ You are a helpful assistant.<|im_end|>
                 self._r1 = score / 100  
             else:
                 self._r1 = 0.5
-            
-            print(f"\nReward score {self.depth - 1}: {self._r1*100:.0f}")
 
                 
         if not Answer:
@@ -562,10 +558,11 @@ def medical_mcts_search(prompt: str,
                         tokenizer,
                         task_name,
                         mcts_rollouts=10,
+                        max_depth=5,
                         w_exp=1.0,
                         r_alpha=0.4,
-                        r1_default=1.0,
-                        max_depth=5):
+                        r1_default=1.0
+                        ):
     """
     Run MCTS search for medical prediction
     
@@ -581,15 +578,13 @@ def medical_mcts_search(prompt: str,
     Returns:
         Final answer, detailed path, and the search tree
     """
-    log_file = "mcts_search_log2.txt"
+    log_file = "mcts_search_log.txt"
     
     with open(log_file, 'a') as f:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        f.write("\n\n" + "="*80 + "\n")
+        f.write("\n" + "="*80 + "\n")
         f.write(f"NEW CASE - {timestamp}\n")
-        f.write("="*80 + "\n\n")
-    
-    print(f"MCTS search logs will be written to {log_file}")
+        f.write("="*80 + "\n")
     
     # Prepare initial prompt
     input_prompts = "\n<Case 3>:\n" + prompt.strip()
@@ -598,33 +593,29 @@ def medical_mcts_search(prompt: str,
     root = MedicalMCTSNode(input_prompts, llm_model, tokenizer, depth=1, 
                           subquestion_prompts=subquestion_prompts, usefulness_prompts=usefulness_prompts,reward_prompts=reward_prompts,
                           task_name=task_name, r1_default=r1_default, r_alpha=r_alpha, max_depth=max_depth)
-    
+
     logits = []
     trees = []
     
-    with tqdm(range(mcts_rollouts), desc="MCTS Rollouts", position=0, leave=True) as pbar:
-        for i in pbar:
-            print(f"\nStarting rollout {i+1}/{mcts_rollouts}", flush=True)
+    for i in range(mcts_rollouts):  
+        mcts.rollout(root)
             
-            mcts.rollout(root)
+        # Get the terminal node with highest reward
+        max_n, max_r = mcts.max_mean_terminal(root)
+        logits.append(max_n.logits)
             
-            # Get the terminal node with highest reward
-            max_n, max_r = mcts.max_mean_terminal(root)
-            logits.append(max_n.logits)
-            
-            # Copy the tree for later analysis
-            tree_copy = deepcopy(root)
-            tree_copy.Q = dict(mcts.Q)
-            tree_copy.N = dict(mcts.N)
-            tree_copy.M = dict(mcts.M)
-            trees.append(tree_copy)
-            
-            # Update progress
-            pbar.set_postfix({"Best reward": f"{max_r:.3f}"})
+        # Copy the tree for later analysis
+        tree_copy = deepcopy(root)
+        tree_copy.Q = dict(mcts.Q)
+        tree_copy.N = dict(mcts.N)
+        tree_copy.M = dict(mcts.M)
+        trees.append(tree_copy)
     
+    best_terminal_node, best_reward = mcts.max_mean_terminal(root)
     root.print(mcts, file=log_file)
     # Extract final prediction from best trajectory
     best_logits = logits[-1]
+    reasoning = "<Sub-question 1>" + best_terminal_node.prompt.split("<Sub-question 1>", 1)[-1]
     answer = ""
     
     if best_logits >= 0.5:
@@ -636,6 +627,4 @@ def medical_mcts_search(prompt: str,
         f.write("\nFINAL ANSWER: " + answer + "\n")
         f.write("=" * 80 + "\n\n")
     
-    print(f"Final answer: {answer}, logits: {best_logits}")
-    
-    return best_logits, trees
+    return best_logits, trees, reasoning
